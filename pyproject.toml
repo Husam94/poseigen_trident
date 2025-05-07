@@ -5,15 +5,18 @@
 requires = ["setuptools", 
 			"numpy", 
 			"pandas", 
-			"matplotlib", 
-			"denseweight", 
-			"tqdm", 
-      "torch"
+      "torch",
+      "scipy",
+      
+      "poseigen_seaside",
+      "poseigen_binmeths",
+      "poseigen_compass"
+
 			]
 
 [project]
 
-name = "poseigen_seaside"
+name = "poseigen_trident"
 
 version = "0.0.1" 
 
@@ -50,12 +53,15 @@ classifiers = [
   
 ]
 
-dependencies = ["numpy", 
-				"pandas", 
-				"matplotlib", 
-				"denseweight", 
-				"tqdm", 
-        "torch"]
+dependencies = [			
+  "numpy", 
+			"pandas", 
+      "torch",
+      "scipy",
+      
+      "poseigen_seaside",
+      "poseigen_binmeths",
+      "poseigen_compass"]
 
 [project.urls]
-"Homepage" = "https://github.com/husam94/poseigen_seaside"
+"Homepage" = "https://github.com/husam94/poseigen_trident"

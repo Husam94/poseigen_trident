@@ -1,15 +1,12 @@
-import sys
-sys.path.insert(-1, '/mnt/x/Computation/ocu/utilities')
-
 import numpy as np
 
 import torch
 import torch.nn as nn
 
-import ocu_seaside.ocu_basics as se
-import ocu_trident.ocu_tri_utils as tu
-import ocu_trident.ocu_prongs as tp
+import poseigen_seaside.basics as se
 
+import poseigen_trident.utils as tu
+import poseigen_trident.prongs as tp
 
 
 class SimpNet(nn.Module):
@@ -43,69 +40,6 @@ class SimpNet(nn.Module):
                    'activations': [[nn.ReLU(), nn.LeakyReLU()], 'cat'],
                    'activation_f': [[None], 'cat']}
     
-
-
-#######################################################################
-
-
-
-class DivoNet(nn.Module):
-    def __init__(self, 
-                 dim_i = (8,1,1),
-                 two_outs = False, 
-                 comb = 'sub', 
-                 P1_mods = 3, P1_cf_i = 50, P1_cf_ns = 1, P1_dropout = None, 
-                 P1_cf_pu = 10,
-                 batchnorm = 'before', bias = True,
-                 activations = nn.ReLU(), activation_f = None): 
-        
-        super(DivoNet, self).__init__()
-
-        #DivoNet always outputs a SINGLE VALUE 
-
-        outies = 2 if two_outs else 1
-        if two_outs is False: comb = None
-
-        prong_out = (outies,1,1)
-        
-        self.P1 = nn.Sequential(* tp.Prong_X(dim_i, prong_out, mods = P1_mods, 
-                                          cf_i = P1_cf_i, cf_ns = P1_cf_ns, cf_pu = P1_cf_pu,
-                                          dropout = P1_dropout, activations = activations,
-                                          batchnorm = batchnorm, bias = bias,
-                                          out = True, activation_f = None))      
-
-        if comb is not None: 
-            if comb == 'div': self.Comb = tu.DivideLayer()
-            if comb == 'sub': self.Comb = tu.SubtractLayer()
-        else: self.Comb = nn.Identity()
-
-        self.actf = nn.Identity() if activation_f is None else activation_f
-
-                                
-    def forward(self,x):
-        x = self.P1(x)
-        x = self.Comb(x)
-        x = self.actf(x)
-        return x
-    
-    DivoNetDict = {'dim_i': [[(8,1,1)],'cat'], #Set as a single dim_i
-                   
-                   'two_outs': [[True, False], 'cat'],
-                   'comb': [[True, False], 'cat'],
-                   
-                   'P1_mods': [[1,5], 'int'],
-                   'P1_cf_i': [[5,50],'int'],
-                   'P1_cf_ns': [[1, 1.6], 'cat'],
-                   'P1_dropout': [[0,0.5], 'float'],
-                   
-                   'activations': [[nn.ReLU(), nn.LeakyReLU()], 'cat'],
-                   'activation_f': [[None], 'cat']}
-
-
-
-########################################################################
-
-
 
 
 

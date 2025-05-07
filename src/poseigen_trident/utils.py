@@ -1,6 +1,3 @@
-import sys
-sys.path.insert(-1, '/mnt/x/Computation/ocu/utilities')
-
 import os
 import pickle
 import copy
@@ -11,9 +8,10 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam, AdamW
 
-import ocu_seaside.ocu_basics as se
-import ocu_binmeths as bm
-import ocu_compass as co
+import poseigen_seaside.basics as se
+import poseigen_seaside.metrics as mex
+import poseigen_binmeths as bm
+import poseigen_compass as co
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -941,18 +939,6 @@ def ByAxis(inp, byaxis = -1, mode = None, pyt = False):
 
     return inps
 
-def MeanExpo(inp, expo = 2, root = False, pyt = False):
-    
-    #inp needs to be an array!!!!!!!!!!! NO LISTS 
-    
-    if expo != 2: root = False
-    inp = inp**expo
-    ME = torch.mean(inp) if pyt else np.mean(inp)
-    if root: ME = ME**(1/2)
-
-    return ME
-
-
 
 def BinnedLoss(inp1, inp2, std = None, 
                 weights = None, useweights = True, 
@@ -961,7 +947,7 @@ def BinnedLoss(inp1, inp2, std = None,
                 byaxis = None, seperate = False,
 
                 metrics_mode = [se.AError, {'expo': 2}],
-                summarize_mode = [MeanExpo, {'expo': 2}], 
+                summarize_mode = [mex.MeanExpo, {'expo': 2}], 
                 pyt = False):
     
     #uni is determined by the input always. 
@@ -1015,309 +1001,6 @@ def BinnedLoss(inp1, inp2, std = None,
     else: gx_sums = gxs
 
     return gx_sums
-
-
-
-
-
-
-#################################################################################################
-
-def TDistroCDF(z, n = None, pyt = False): 
-
-    pi = 3.141592653589793
-
-    if n is not None: 
-        df = n - 1
-        if df == 1: 
-            arctanf = torch.atan if pyt else np.arctan
-            zo = 0.5 + ((1 / pi) * arctanf(z))
-        elif df == 2: 
-            zo = 0.5 + ((z/2) * ((2+(z**2)) ** (-0.5)))
-        elif df > 2: 
-            zadj = z* (((4*df) + (z**2) - 1) / ((4*df) + 2 * (z**2)))
-            zo = se.TocherApprox(zadj)
-    
-    return zo
-
-def TDistroCDF_TwoSide(z, n = None, pyt = False): 
-    xo = TDistroCDF(z, n = n, pyt = pyt)
-    return (xo - 0.5) ** 2
-
-
-def PhiError(inp1, inp2, std = 1, 
-                    weights = None, mean = True,
-                    pseudo = 1e-6, ######### VERY SMALL ERROR
-                    log = False, cap = 30,
-                    pyt = False, n = None,
-                    expo = 2, root = False, weightbefore = False): 
-    
-    # IN THIS VERSION, THE PSEUDO IS THE LOWEST STD THAT YOU HAVE !!!!!!!!!!!!!!!!!!!!!!!
-    # "n" is nuimber of samples for replicates.This is to adjust for the t-distribtion. 
-    
-    if expo != 2: root = False
-    weights = se.WeightsAdjuster(inp1, weights)
-    
-
-    e1 = (abs(inp1-inp2)) 
-    z = (e1 / (std + pseudo)) + pseudo
-
-    if pyt: z = torch.clamp(z, min = None, max = cap)
-    else: z = np.clip(z, a_min = None, a_max = cap)
-
-    e2 = TDistroCDF_TwoSide(z, n = n, pyt = pyt)
-    
-    e4 = e1 * e2
-    
-    if log: e4 = np.log(1+e4) #########
-
-    AE = (weights * e4)**expo if weightbefore else weights * (e4 **expo)
-    
-    if mean is True:  
-        AE = AE.mean()
-        if root: AE = AE**(1/2)
-    
-    return AE
-
-
-
-##################################################
-
-
-#  BETA PRIME LOSS FUNCTION STUFF
-
-
-def BetaPrime_Mode(alpha, beta, pseudo = 0):
-    mox = (alpha - 1) / (beta + 1)
-    bb = alpha <= 1
-    mox[bb] = pseudo
-    return mox
-
-def Beta2BetaPrime(x, alpha, beta): 
-    return ((1+x)**(-alpha-beta)) / ((1-x) ** (beta - 1))
-
-def BetaPrime_PDF_sci(x, alpha, beta): 
-    return scipy.stats.betaprime.pdf(x, alpha, beta)
-
-
-################################
-
-def LogBetaFunction_pyt(alpha, beta):
-    #alpha and beta need to be tensors!!!!!!!! 
-    return torch.lgamma(alpha) + torch.lgamma(beta) - torch.lgamma(alpha + beta)
-
-def BetaFunction_pyt(alpha, beta):
-    e = 2.718281828459045
-    return e ** LogBetaFunction_pyt(alpha, beta)
-
-def BetaPrime_PDF_pyt(x, alpha, beta):
- 
-    # NEED TO WORK IN LOG HERE @@@@@@@@@@@@@@@@@@@@@@
-
-    psu = 1e-10 #THIS IS A TEMPORARY VALUE
-
-    helper_tensor = torch.ones(x.shape)
-    helper_tensor[x < 0] = 0
-
-    devo = x.get_device()
-    if devo > -1: helper_tensor = helper_tensor.to(devo)
-
-    x2 = (x * helper_tensor) + psu
-
-    p1a = torch.log(x2) * (alpha - 1)
-    p1b = torch.log(1 + x2) * (-alpha-beta)
-    p2 = LogBetaFunction_pyt(alpha, beta)
-
-    e = 2.718281828459045
-
-    rex = (p1a + p1b - p2)
-    
-    ret = e ** rex
-    ret = ret * helper_tensor
-
-    return ret
-
-############################
-
-
-def BetaPrime_Rel(inp, alpha, beta, mo = None, pyt = False, pseudo = 0):
-
-    #---------------------------------------
-
-    if mo is None: mo = BetaPrime_Mode(alpha, beta)
-
-    inp, alpha, beta, mo = [x + pseudo for x in [inp, alpha, beta, mo]]
-
-    #---------------------------------------
-
-    if pyt:
-        maxo = BetaPrime_PDF_pyt(mo, alpha = alpha, beta = beta)
-        betaprimo= BetaPrime_PDF_pyt(inp, alpha = alpha, beta = beta)
-
-    else: 
-        maxo = BetaPrime_PDF_sci(mo, alpha, beta)
-        betaprimo= BetaPrime_PDF_sci(inp, alpha, beta)
-    
-    return betaprimo / maxo
-
-def BetaPrime_CompRel(inp, alpha, beta, mo = None, pyt = False, pseudo = 0):
-
-    dxo = BetaPrime_Rel(inp, alpha, beta, mo = mo, pyt = pyt, pseudo = pseudo)
-    
-    return 1 - dxo
-
-
-
-###############################
-
-
-def CR_BetaPrime(inp1, inp2, var, pyt = False, pseudo = 0): 
-
-    # VAR NEEDS TO BE SOMETHING!!!!!!!!!!!!!!!!!!!!!
-
-    if pyt:
-
-        alpha1 = torch.select(var, dim = -1, index = 0)
-        alpha2 = torch.select(var, dim = -1, index = 1)
-
-    else: 
-
-        
-
-        # alpha1 = np.take_along_axis(var, indices = 0, axis = -1)
-        # alpha2 = np.take_along_axis(var, indices = 1, axis = -1)
-
-        alpha1 = var[:, :, :, :, 0]
-        alpha2 = var[:, :, :, :, 1]
-    
-    return BetaPrime_CompRel(inp1, alpha = alpha1, beta = alpha2, mo = inp2, 
-                             pyt = pyt, pseudo = pseudo)
-
-
-
-
-def DeviaError(inp1, inp2, std = 1,
-               comprel_mode = [CR_BetaPrime, {}],
-                   scalefactor = 1, pseudo = 0,
-                   pyt = False,
-                   weights = None, mean = True,
-                   expo = 2, root = False, weightbefore = False, 
-
-                   modif_mode = None, usestd = True, ##############               
-                   ): 
-    
-    # NEW MOD: MVOED PSEUDO FOR COMPREL MODE. 
-    # INP1 IS PREDICTION, INP2 IS ACTUAL !!!!!!!!!!!!!! VERY IMPORTANT ORDER. 
-
-
-    comprel_mode[1].update({'pyt': pyt})
-
-    if pseudo is None: pseudo = 0
-    
-    if expo != 2: root = False
-    weights = se.WeightsAdjuster(inp1, weights)
-
-    inp1_m, inp2_m = [(inp * scalefactor)
-                        for inp in [inp1, inp2]]
-
-    e1 = (abs(inp1_m-inp2_m))
-
-    if modif_mode is not None: 
-        inp1_m, inp2_m = [modif_mode[0](inpx, **modif_mode[1]) 
-                          for inpx in [inp1_m, inp2_m]]
-    
-    #--------------------------------------------------
-
-    comprelprob = comprel_mode[0](inp1_m, inp2_m, std, 
-                                  pseudo = pseudo,
-                                  **comprel_mode[1]) if usestd else 1
-
-    #--------------------------------------------------
-    
-    
-    e4 = comprelprob * e1
-    
-    AE = (weights * e4)**expo if weightbefore else weights * (e4 **expo)
-    
-    if mean is True:  
-        AE = AE.mean()
-        if root: AE = AE**(1/2)
-    
-    return AE
-
-
-
-
-
-
-
-
-
-# def DeviaError(inp1, inp2, std = 1,
-#                comprel_mode = [CR_BetaPrime, {}],
-#                    scalefactor = 1, pseudo = 0,
-#                    pyt = False,
-#                    weights = None, mean = True,
-#                    expo = 2, root = False, weightbefore = False, 
-
-#                    modif_mode = None, usestd = True, ##############               
-#                    ): 
-    
-#     # INP1 IS PREDICTION, INP2 IS ACTUAL !!!!!!!!!!!!!! VERY IMPORTANT ORDER. 
-
-
-#     comprel_mode[1].update({'pyt': pyt})
-
-#     if pseudo is None: pseudo = 0
-    
-#     if expo != 2: root = False
-#     weights = se.WeightsAdjuster(inp1, weights)
-
-#     std = std + pseudo
-
-#     inp1_m, inp2_m = [(inp * scalefactor) + pseudo
-#                         for inp in [inp1, inp2]]
-
-
-#     e1 = (abs(inp1_m-inp2_m))
-
-#     if modif_mode is not None: 
-#         inp1_m, inp2_m = [modif_mode[0](inpx, **modif_mode[1]) 
-#                           for inpx in [inp1_m, inp2_m]]
-    
-#     #--------------------------------------------------
-
-#     # SPECIFICALLY FOR PYTORCH. 
-
-#     inp1_nz = inp1_m + 0
-#     inp1_nz[inp1_m <= 0] = pseudo
-
-#     comprelprob = comprel_mode[0](inp1_nz, inp2_m, std, **comprel_mode[1]) if usestd else 1
-    
-#     # OLD: 
-#     #comprelprob = comprel_mode[0](inp1_m, inp2_m, std, **comprel_mode[1]) if usestd else 1
-
-#     #--------------------------------------------------
-    
-    
-#     e4 = comprelprob * e1
-    
-#     AE = (weights * e4)**expo if weightbefore else weights * (e4 **expo)
-    
-#     if mean is True:  
-#         AE = AE.mean()
-#         if root: AE = AE**(1/2)
-    
-#     return AE
-
-
-
-
-
-
-
-
-
 
 
 

@@ -1,13 +1,10 @@
-import sys
-sys.path.insert(-1, '/mnt/x/Computation/ocu/utilities')
-
 import numpy as np
 
 import torch
 import torch.nn as nn
 
-import ocu_seaside.ocu_basics as se
-import ocu_trident.ocu_tri_utils as tu
+import poseigen_seaside.basics as se
+import poseigen_trident.utils as tu
 
 
 ######################################################################################################
