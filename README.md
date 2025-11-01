@@ -13,8 +13,8 @@ This package contains 3 modules:
 3. utils 
 - This contains utilities used in the aforementioned modules. 
 - It also contains: 
-    - A special Trainer that implements useful fitting methods such as batch flipping (for biological sequences) and Epoch Sampling (Binning Methods paper)
+    - A special Trainer that implements useful fitting methods such as batch flipping (for biological sequences) and Epoch Sampling ([Binning Methods paper](https://doi.org/10.1101/2025.06.26.661884))
     - A Predictor for producing predictions
     - A candidate scorer and candidate repeater which are used for hyperparameter optimization with [poseigen_compass](https://github.com/Husam94/poseigen_compass)
-    - Binned loss which is using bin metrics as a loss function (Binning Methods paper)
+    - Binned loss which is using bin metrics as a loss function ([Binning Methods paper](https://doi.org/10.1101/2025.06.26.661884))
     - Synthetic data generation (see [DevLoss](https://github.com/Husam94/DevLoss) case study)
