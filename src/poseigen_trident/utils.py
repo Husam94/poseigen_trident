@@ -132,7 +132,7 @@ class DivideLayer(nn.Module):
 
 #### TRAINER ####
 
-def trident_loss_mode_default(): return [se.AError, {'expo': 2}]
+def trident_loss_mode_default(): return [mex.AError, {'expo': 2}]
 
 def norunmet_maker(Ls, metrics_mode, 
                    bino = False): 
@@ -946,7 +946,7 @@ def BinnedLoss(inp1, inp2, std = None,
                 bind = None, 
                 byaxis = None, seperate = False,
 
-                metrics_mode = [se.AError, {'expo': 2}],
+                metrics_mode = [mex.AError, {'expo': 2}],
                 summarize_mode = [mex.MeanExpo, {'expo': 2}], 
                 pyt = False):
     

@@ -1,0 +1,11 @@
+LICENSE.txt
+README.md
+pyproject.toml
+src/poseigen_trident/preass.py
+src/poseigen_trident/prongs.py
+src/poseigen_trident/utils.py
+src/poseigen_trident.egg-info/PKG-INFO
+src/poseigen_trident.egg-info/SOURCES.txt
+src/poseigen_trident.egg-info/dependency_links.txt
+src/poseigen_trident.egg-info/requires.txt
+src/poseigen_trident.egg-info/top_level.txt

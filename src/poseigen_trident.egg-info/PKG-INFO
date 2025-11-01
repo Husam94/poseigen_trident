@@ -1,0 +1,25 @@
+Metadata-Version: 2.4
+Name: poseigen_trident
+Version: 0.0.1
+Summary: The basics for Poseigen software
+Author-email: Husam Abdulnabi <husam.abdulnabi@gmail.com>
+Maintainer-email: Husam Abdulnabi <husam.abdulnabi@gmail.com>
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/husam94/poseigen_trident
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development
+Classifier: Programming Language :: Python :: 3
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+License-File: LICENSE.txt
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: torch
+Requires-Dist: scipy
+Requires-Dist: poseigen_seaside
+Requires-Dist: poseigen_binmeths
+Requires-Dist: poseigen_compass
+Dynamic: license-file
+
+Will do

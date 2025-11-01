@@ -1,0 +1,7 @@
+numpy
+pandas
+torch
+scipy
+poseigen_seaside
+poseigen_binmeths
+poseigen_compass
