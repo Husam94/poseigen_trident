@@ -172,6 +172,10 @@ class DivoNet(nn.Module):
         x = self.P1(x)
         x = self.Comb(x)
         x = self.actf(x)
+
+        if torch.any(torch.isnan(x)):
+            print('OUTPUTTING NAN, WE GOT A PROBLEM HERE.')
+
         return x
     
     DivoNetDict = {'dim_i': [[(8,1,1)],'cat'], #Set as a single dim_i
