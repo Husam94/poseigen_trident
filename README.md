@@ -33,9 +33,9 @@ For local development, install from source using your preferred editable-install
 Import modules directly:
 
 ```python
+import poseigen_trident.utils as tu
 import poseigen_trident.prongs as prongs
 import poseigen_trident.preass as preass
-import poseigen_trident.utils as tu
 ```
 
 ## Project Status
