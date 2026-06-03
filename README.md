@@ -1,20 +1,53 @@
-# Trident 
+# Trident
 
-The Trident is a collection of three super-module generators for Neural Network design and construction for biological sequences and beyond. The short paper explaining it is in progress. 
+Trident is the neural network design and training package in the Poseigen family.
+It provides super-module generators, pre-assembled architectures, and a full training toolkit for biological sequences and beyond.
 
-This package contains 3 modules: 
+## Features
 
-1. prongs
-- This contains the super-module generators called Prongs. 
+Trident is organized into five modules:
 
-2. preass
-- This contains pre-assembled neural networks ranging from simple dense NNs to convolutional autoencoders 
+- prongs: super-module generators (Prongs) for composable neural network construction.
+- preass: pre-assembled neural networks ranging from simple dense networks to convolutional autoencoders.
+- deepstarr: DeepSTARR-based model implementations.
+- othermodels: additional model architectures.
+- utils: shared training and evaluation utilities including:
+  - A Trainer with batch flipping and Epoch Sampling ([Binning Methods paper](https://doi.org/10.1101/2025.06.26.661884)).
+  - A Predictor for producing predictions.
+  - Candidate scorer and repeater for hyperparameter optimization with [poseigen_compass](https://github.com/Husam94/poseigen_compass).
+  - Binned loss using bin metrics as a loss function.
+  - Synthetic data generation.
 
-3. utils 
-- This contains utilities used in the aforementioned modules. 
-- It also contains: 
-    - A special Trainer that implements useful fitting methods such as batch flipping (for biological sequences) and Epoch Sampling ([Binning Methods paper](https://doi.org/10.1101/2025.06.26.661884))
-    - A Predictor for producing predictions
-    - A candidate scorer and candidate repeater which are used for hyperparameter optimization with [poseigen_compass](https://github.com/Husam94/poseigen_compass)
-    - Binned loss which is using bin metrics as a loss function ([Binning Methods paper](https://doi.org/10.1101/2025.06.26.661884))
-    - Synthetic data generation (see [DevLoss](https://github.com/Husam94/DevLoss) case study)
+## Installation
+
+Install from PyPI:
+
+```bash
+pip install poseigen_trident
+```
+
+For local development, install from source using your preferred editable-install workflow.
+
+## Usage
+
+Import modules directly:
+
+```python
+import poseigen_trident.prongs as prongs
+import poseigen_trident.preass as preass
+import poseigen_trident.utils as tu
+```
+
+## Project Status
+
+poseigen_trident is in active development and is intended to support neural network workflows across the Poseigen ecosystem.
+
+## Related Projects
+
+- poseigen_seaside: shared utilities and metrics foundation.
+- poseigen_binmeths: binning and split-generation utilities.
+- poseigen_compass: hyperparameter optimization and model evaluation.
+
+## License
+
+This project is released under the MIT License.

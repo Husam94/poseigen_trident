@@ -1,34 +1,64 @@
+import numpy
+
 import torch
 import torch.nn as nn
 
-class BichromBimodal(nn.Module):
-    def __init__(self, dna_filters=128, hist_filters=64, dna_lstm=50, hist_lstm=25):
-        super(BichromBimodal, self).__init__()
-        
+'''Pytorch implementation of other NNs for genomics data'''
+
+class BiChrom(nn.Module):
+    def __init__(self, 
+                 A_dim_i = (1,500,4),
+                 A_kE_k = 24, A_cf = 256, 
+                 A_rec_f = 32, 
+                 A_dense_num = 3, A_dense_f = 512,
+                 
+                 B_dim_i = (11,40,1),
+                 B_kE_k = 1, B_cf = 15,
+                 B_rec_f = 5,
+                 
+                 rec_layer = 'LSTM', dropout = 0.5, 
+                 activation_f = None, activations = nn.ReLU()
+                 ):
+        super(BiChrom, self).__init__()
+
+        if rec_layer == 'LSTM': rec_lax = torch.nn.LSTM
+        elif rec_layer == 'GRU': rec_lax = torch.nn.GRU
+
         # --- DNA Branch (Input: N, 1, 500, 4) ---
         # We use a kernel that spans the full 4-base width or a subset
         self.dna_conv = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=dna_filters, kernel_size=(15, 4)),
+            nn.Conv2d(in_channels=A_dim_i[0], out_channels=A_cf, kernel_size=(A_kE_k, A_dim_i[2])),
             nn.ReLU(),
-            nn.Dropout(0.2)
+            nn.BatchNorm2d(A_cf),
+            nn.MaxPool2d(kernel_size=(15, 1), stride=(15, 1), padding=0, ceil_mode=True)
         )
-        # After Conv2d: (N, dna_filters, 486, 1) -> Squeeze/Flatten to (N, 486, dna_filters)
-        self.dna_lstm = nn.LSTM(dna_filters, dna_lstm, batch_first=True)
-        self.dna_fc = nn.Linear(dna_lstm, 1)
+        # After Conv2d: (N, A_cf, 486, 1) -> Squeeze/Flatten to (N, 486, dna_filter
+
+        self.dna_lstm = rec_lax(A_cf, A_rec_f, batch_first=True)
+
+        lins = []
+        for _ in range(A_dense_num):
+            lins.extend([nn.Linear(A_rec_f, A_dense_f),
+                        activations,
+                        nn.Dropout(dropout)])
+            A_rec_f = A_dense_f
+        lins.append(nn.Linear(A_rec_f, 1))
+
+        self.dna_fc = nn.Sequential(*lins)
+
 
         # --- Histone Branch (Input: N, 11, 40, 1) ---
         # Note: input channels is 11, we treat tracks as "height" or "channels"
         # Using Conv2d here allows kernels to look across different histones
         self.hist_conv = nn.Sequential(
-            nn.Conv2d(in_channels=11, out_channels=hist_filters, kernel_size=(5, 1)),
-            nn.ReLU(),
-            nn.Dropout(0.2)
+            nn.Conv2d(in_channels=B_dim_i[0], out_channels=B_cf, kernel_size=(B_kE_k, B_dim_i[2])),
+            activations
         )
         # After Conv2d: (N, hist_filters, 36, 1) -> Squeeze/Flatten to (N, 36, hist_filters)
-        self.hist_lstm = nn.LSTM(hist_filters, hist_lstm, batch_first=True)
-        self.hist_fc = nn.Linear(hist_lstm, 1)
+        self.hist_lstm = rec_lax(B_cf, B_rec_f, batch_first=True)
+        self.hist_fc = nn.Linear(B_rec_f, 1)
 
-        self.sigmoid = nn.Sigmoid()
+        self.actf = nn.Identity() if activation_f is None else activation_f
 
     def forward(self, dna, hist):
         # dna: (N, 1, 500, 4) | hist: (N, 11, 40, 1)
@@ -46,8 +76,33 @@ class BichromBimodal(nn.Module):
         v_hist = self.hist_fc(h_hist.squeeze(0)) # Scalar Activation
 
         # 3. Late Fusion
-        return self.sigmoid(v_seq + v_hist)
+        out = self.actf(v_seq + v_hist)  # (N, 1)
+        return out.view(out.size(0), 1, 1, 1)
     
+
+def Reset_BiChrom(bichrom):
+    #ds consists of a "conv" and a "dense" module. Need to go through each one, see if its a conv and reset if so. 
+    lke, los = len(bichrom.dna_conv), len(bichrom.hist_conv)
+
+    for i in np.arange(lke): 
+        if isinstance(bichrom.dna_conv[i], nn.Conv2d): 
+            bichrom.dna_conv[i].reset_parameters()
+        
+    for i in np.arange(los): 
+        if isinstance(bichrom.hist_conv[i], nn.Conv2d): 
+            bichrom.hist_conv[i].reset_parameters()
+    
+    for i in np.arange(len(bichrom.dna_fc)): 
+        if isinstance(bichrom.dna_fc[i], nn.Linear): 
+            bichrom.dna_fc[i].reset_parameters()
+    
+    bichrom.dna_lstm.reset_parameters()
+    bichrom.hist_lstm.reset_parameters()
+    bichrom.hist_fc.reset_parameters()
+
+    print('done reset mod')
+
+    return bichrom
 
 
 import torch

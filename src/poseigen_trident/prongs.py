@@ -69,18 +69,78 @@ def Prong_X(dim_i = (300, 200, 1), dim_f = (20, 1, 1),
 
     ######################################################
 
-    if mods == 0: cf_i, cf_pu = None, None
+    if cf_pu is not None: cf_pu = int(cf_pu)
 
-    if cf_pu is None: cf_pu = 0
-    mx, dfx = (mods-1, cf_pu) if (cf_pu > 0 and mods > 2) else (mods, dim_f[0])
+    if mods == 1: 
+        cfs = [dim_i[0], dim_f[0]]
+        
+    elif mods == 2:
+        if cf_i is not None: cfs = [dim_i[0], cf_i, dim_f[0]]
+        elif cf_pu is not None: cfs = [dim_i[0], cf_pu, dim_f[0]]
+        else: cfs = np.linspace(dim_i[0], dim_f[0], 3).astype(int)
+    else:
+        cfs = [dim_i[0]]
 
-    cfs = np.round(se.GeomNumSpacing(dim_i[0], dfx, mx + 1, cf_ns)).astype(int)
+        # Determine positions for cf_i and cf_pu
+        if cf_i is not None and cf_pu is not None and mods > 3:
+            # Both cf_i and cf_pu set, interpolate between them
+            cfs.append(cf_i)
+            n_middle = mods - 3
+            if n_middle > 0:
+                cfs += list(np.linspace(cf_i, cf_pu, n_middle + 2, dtype=int)[1:-1])
+            cfs.append(cf_pu)
+        elif cf_i is not None:
+            # Only cf_i set, interpolate from cf_i to output
+            n_middle = mods - 2
+            cfs.append(cf_i)
+            if n_middle > 0:
+                cfs += list(np.linspace(cf_i, dim_f[0], n_middle + 2, dtype=int)[1:-1])
+        elif cf_pu is not None:
+            # Only cf_pu set, interpolate from input to cf_pu
+            n_middle = mods - 2
+            if n_middle > 0:
+                cfs += list(np.linspace(dim_i[0], cf_pu, n_middle + 2, dtype=int)[1:-1])
+            cfs.append(cf_pu)
+        else:
+            # Neither set, interpolate from input to output
+            cfs += list(np.linspace(dim_i[0], dim_f[0], mods + 1, dtype=int)[1:-1])
+        cfs.append(dim_f[0])
     
-    if cf_i is not None: 
-        cfs = np.hstack([dim_i[0], 
-                    np.round(se.GeomNumSpacing(cf_i, dfx, mx, cf_ns)).astype(int)])
+    cfs = np.array(cfs)
+
+    # else: 
+    #     if cf_i is not None: 
+    #         cfs = np.hstack([dim_i[0], 
+    #                 np.round(se.GeomNumSpacing(cf_i, dfx, mx, cf_ns)).astype(int)])
+
+
+
+
+
+
+
+
+
+    # if mods == 0: cf_i, cf_pu = None, None
+
+    # if cf_pu is None: cf_pu = 0
+    # mx, dfx = (mods-1, cf_pu) if (cf_pu > 0 and mods > 2) else (mods, dim_f[0])
+
+    # cfs = np.round(se.GeomNumSpacing(dim_i[0], dfx, mx + 1, cf_ns)).astype(int)
     
-    if cf_pu > 0: cfs = np.array(cfs.tolist() + [dim_f[0]])
+    # if cf_i is not None: 
+    #     cfs = np.hstack([dim_i[0], 
+    #                 np.round(se.GeomNumSpacing(cf_i, dfx, mx, cf_ns)).astype(int)])
+    
+    # if cf_pu > 0: 
+    #     cfs = np.round(se.GeomNumSpacing(dim_i[0], dim_i[0] * cf_pu, mx, cf_ns)).astype(int)
+
+    #     cfs = np.hstack([cfs, dfx])
+
+
+
+
+
 
     if ck_grouped > 1: num_groups = ck_grouped
     elif ck_grouped == True: num_groups = dim_i[0]
@@ -558,4 +618,181 @@ def Prong_Z(dim_i = (20, 1, 1), dim_f = (1, 200, 1),
 #     if activation_f != None: layers.append(activation_f)
 
 #     return layers
+
+
+
+
+
+
+#------------------------------------------------
+
+
+import math
+
+def Prong_W_params(seq_len, ck_i, ck_base, pk_base, pk_s, prints=False, skip_first_conv=False):
+    pk_base = pk_base + pk_s
+    if ck_i is None: ck_i = ck_base
+
+    ck_bases, pk_bases, pk_ss, pool_pads = [], [], [], []
+    current_len = seq_len
+    module_idx = 1
+
+    if prints: print(f"=== Starting Sequence Length: {seq_len} ===")
+
+    while current_len > 1:
+        input_len = current_len  # Input length at start of module
+
+        if prints: print(f"\nModule {module_idx}:")
+        if prints: print(f"  Input Length: {input_len}")
+
+        # 1. Determine conv kernel
+        if skip_first_conv and module_idx == 1:
+            this_conv_k = None
+            conv_out_len = input_len
+        else:
+            target_conv_k = ck_i if module_idx == 1 else ck_base
+            this_conv_k = target_conv_k if input_len >= target_conv_k else input_len
+            conv_out_len = (input_len - this_conv_k) + 1
+
+        if prints and this_conv_k is not None:
+            print(f"  -> Conv (kernel={this_conv_k}, stride=1, pad=0)")
+            print(f"  -> Length after Conv: {conv_out_len}")
+
+        # 2. Attempt pooling search using conv_out_len
+        found_p = None
+        pool_output_len = None
+        max_legal_p = pk_base // 2
+        for p in range(max_legal_p + 1):
+            l_out = math.ceil((conv_out_len + 2 * p - pk_base) / pk_s) + 1
+            if l_out > 0:
+                if (l_out - 1) * pk_s < (conv_out_len + p):
+                    found_p = p
+                    pool_output_len = l_out
+                    break
+
+        # 3. If pooling is not possible, override conv kernel to input_len and stop
+        if found_p is None or pk_base is None or pk_base <= 1 or conv_out_len < pk_base or (pool_output_len is not None and pool_output_len < 1):
+            if this_conv_k is not None:
+                this_conv_k = input_len
+            if prints and this_conv_k is not None:
+                print(f"  -> Global Conv triggered! (kernel={this_conv_k})")
+            ck_bases.append(this_conv_k)
+            pk_bases.append(None)
+            pk_ss.append(None)
+            pool_pads.append(None)
+            if prints: print("  -> Sequence reached length 1 or global conv. Stopping architecture build.")
+            current_len = 1
+            break
+        else:
+            ck_bases.append(this_conv_k)
+            pk_bases.append(pk_base)
+            pk_ss.append(pk_s)
+            pool_pads.append(found_p)
+            current_len = pool_output_len
+            if prints:
+                print(f"  -> Pool (kernel={pk_base}, stride={pk_s}, pad={found_p})")
+                print(f"  -> Length after Pool: {current_len}")
+
+        module_idx += 1
+
+    return ck_bases, pk_bases, pk_ss, pool_pads
+
+
+def Prong_W(dim_i = (1, 500, 4), dim_f = (300, 1, 1),
+            
+            cf_i = None, cf_pu = None,
+            cf_ns = 1,
+
+            ck_i=11, ck_base=3, 
+            pool_func = nn.MaxPool2d, pk_base=4, pk_s=2, 
+            actb4pool = True,
+            
+            activations = nn.ReLU(),
+            batchnorm = 'before', bias = True,
+            skip_first_conv = False,
+            ): 
+    
+    # pk_base is an number that is added on to pk_s to determine pooling kernel size
+
+    if ck_i is None: ck_i = ck_base
+    
+    c_ks, p_ks, p_ss, p_ps = Prong_W_params(dim_i[1], ck_i=ck_i, ck_base=ck_base, 
+                                               pk_base=pk_base, pk_s=pk_s, prints=False, 
+                                               skip_first_conv=skip_first_conv)
+        
+    dx = dim_i[2]
+
+    #-------------------------------
+
+    mods = len(c_ks)
+
+    if cf_pu == None: cf_pu = 0
+    mx, dfx = (mods-1, cf_pu) if (cf_pu > 0 and mods > 2) else (mods, dim_f[0])
+
+    cfs = np.round(se.GeomNumSpacing(dim_i[0], dfx, mx + 1, cf_ns)).astype(int)
+    
+    if cf_i != None: 
+        cfs = np.hstack([dim_i[0], 
+                    np.round(se.GeomNumSpacing(cf_i, dfx, mx, cf_ns)).astype(int)])
+    
+    if cf_pu > 0: cfs = cfs.tolist() + [dim_f[0]]
+
+    if skip_first_conv and mods > 1: cfs[1] = cfs[0] 
+
+    #-----------------------------
+    i = 0 
+    layers = []
+    for c_k, p_k, p_s, p_p in zip(c_ks, p_ks, p_ss, p_ps):
+
+        if c_k is not None: 
+            conv_layer = nn.Conv2d(cfs[i], cfs[i+1], kernel_size = (c_k, dx), bias = bias,
+                                stride = (1, 1), padding = 0)
+            layers.append(conv_layer)
+            dx = 1
+            skipo = False
+        
+        else: skipo = True
+
+        lays_ex = []
+
+        if p_k is not None: 
+
+            if actb4pool and skipo is False: 
+                if batchnorm == 'before': lays_ex.append(nn.BatchNorm2d(cfs[i+1]))
+                if activations != None: lays_ex.append(activations)
+                if batchnorm == 'after': lays_ex.append(nn.BatchNorm2d(cfs[i+1]))
+
+        
+            pool_layer = pool_func(kernel_size = (p_k, 1), stride = (p_s, 1),
+                            padding = p_p, ceil_mode = True)
+            lays_ex.append(pool_layer)
+        
+            if actb4pool == False and skipo is False: 
+                if batchnorm == 'before': lays_ex.append(nn.BatchNorm2d(cfs[i+1]))
+                if activations != None: lays_ex.append(activations)
+                if batchnorm == 'after': lays_ex.append(nn.BatchNorm2d(cfs[i+1]))
+        
+        else:
+            if batchnorm == 'before': lays_ex.append(nn.BatchNorm2d(cfs[i+1]))
+            if activations != None: lays_ex.append(activations)
+            if batchnorm == 'after': lays_ex.append(nn.BatchNorm2d(cfs[i+1]))
+        
+        layers.extend(lays_ex)
+
+        i += 1 
+    
+    return layers
+
+
+
+
+
+
+
+
+
+
+
+
+
 
