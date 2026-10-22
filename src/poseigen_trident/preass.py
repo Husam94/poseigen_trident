@@ -1472,3 +1472,171 @@ def Reset_Dual_Ultra(dual_ultra):
         print('done reset mod')
     
     return dual_ultra
+
+
+
+
+
+
+#=====================================================
+
+class Dual_SimpNet(nn.Module):
+    def __init__(self,
+                 A_dim_i = (8,1,1), B_dim_i = (8,1,1), 
+                 dim_f = (1,1,1), 
+                 
+                 P1_mods = 3, P1_cf_m = 5, 
+                 P2_mods = 3, P2_cf_pu = 2, P2_dropout = None, 
+                 
+                 cf_ns = 1, 
+                 batchnorm = 'before', bias = True,
+                 activations = nn.ReLU(), activation_f = None): 
+        
+        super(Dual_SimpNet, self).__init__()
+
+        #-----------------------------
+        A_dim_mid = (int(A_dim_i[0] * P1_cf_m), 1, 1)
+        self.P1A = nn.Sequential(* tp.Prong_X(A_dim_i, A_dim_mid, mods = P1_mods, 
+                                              cf_i = None, cf_ns = cf_ns, cf_pu = None,
+                                              dropout = None, activations = activations,
+                                              batchnorm = batchnorm, bias = bias,
+                                              out = False, activation_f = None))       
+
+        B_dim_mid = (int(B_dim_i[0] * P1_cf_m), 1, 1)
+        self.P1B = nn.Sequential(* tp.Prong_X(B_dim_i, B_dim_mid, mods = P1_mods, 
+                                              cf_i = None, cf_ns = cf_ns, cf_pu = None,
+                                              dropout = None, activations = activations,
+                                              batchnorm = batchnorm, bias = bias,
+                                              out = False, activation_f = None))      
+
+        AB_dim_mid = (A_dim_mid[0] + B_dim_mid[0], 1, 1)
+        AB_cf_pu = int(AB_dim_mid[0] * P2_cf_pu)
+        self.P2 = nn.Sequential(* tp.Prong_X(AB_dim_mid, dim_f, mods = P2_mods, 
+                                              cf_i = None, cf_ns = cf_ns, cf_pu = AB_cf_pu,
+                                              dropout = P2_dropout, activations = activations,
+                                              batchnorm = batchnorm, bias = bias,
+                                              out = True, activation_f = activation_f))      
+
+
+    def forward(self,x1, x2):
+        x1 = self.P1A(x1)
+        x2 = self.P1B(x2)
+        xcomb = torch.cat([x1, x2], dim = 1)
+        xcomb = self.P2(xcomb)
+        return xcomb
+    
+def Reset_Dual_SimpNet(dual_simpnet):
+    #ds consists of a "conv" and a "dense" module. Need to go through each one, see if its a conv and reset if so. 
+
+    p1a_lays, p1b_lays, p2_lays = len(dual_simpnet.P1A), len(dual_simpnet.P1B), len(dual_simpnet.P2)
+
+    for i in np.arange(p1a_lays): 
+        if isinstance(dual_simpnet.P1A[i], nn.Conv2d): 
+            dual_simpnet.P1A[i].reset_parameters()
+    
+    for i in np.arange(p1b_lays): 
+        if isinstance(dual_simpnet.P1B[i], nn.Conv2d): 
+            dual_simpnet.P1B[i].reset_parameters()
+
+    for i in np.arange(p2_lays): 
+        if isinstance(dual_simpnet.P2[i], nn.Conv2d): 
+            dual_simpnet.P2[i].reset_parameters()
+    
+    return dual_simpnet
+    
+    
+Dual_SimpNet_dict = {'A_dim_i': [[(8,1,1)],'cat'], #Set as a single dim_i
+                        'B_dim_i': [[(8,1,1)],'cat'],
+                        'dim_f': [[(1,1,1)],'cat'], #Set as a single dim_f
+                        
+                        'P1_mods': [[1, 5], 'int'],
+                        'P1_cf_m': [[0.5, 1, 1.5, 2], 'cat'],
+
+                        'P2_mods': [[1, 5], 'int'],
+                        'P2_cf_pu': [[0.5, 1, 1.5, 2], 'cat'],
+                        'P2_dropout': [[0, 0.1, 0.2], 'cat'],
+                        
+                        'cf_ns': [[1], 'cat'],
+                        'batchnorm': [[None, 'before'], 'cat'],
+                        'activations': [[nn.ReLU(), nn.LeakyReLU()], 'cat'],
+                        'activation_f': [[None], 'cat']}
+
+
+
+
+class Dual_SimpNet_2O(nn.Module):
+    
+    '''2O = 2 Output for uncertainty. The 2nd output is softplus to limit it'''
+    
+    def __init__(self,
+                 A_dim_i = (8,1,1), B_dim_i = (8,1,1), 
+                 dim_f = (1,1,1), 
+                 
+                 P1_mods = 3, P1_cf_m = 5, 
+                 P2_mods = 3, P2_cf_pu = 2, P2_dropout = None, 
+                 
+                 cf_ns = 1, 
+                 batchnorm = 'before', bias = True,
+                 activations = nn.ReLU(), activation_f = None): 
+        
+        super(Dual_SimpNet_2O, self).__init__()
+
+        #-----------------------------
+
+        P_inner_args = {'cf_i':None, 'cf_ns':cf_ns, 'cf_pu':None, 
+                          'dropout':None, 'activations':activations,
+                          'batchnorm':batchnorm, 'bias':bias,
+                          'out':False, 'activation_f':None}
+        
+        A_dim_mid = (int(A_dim_i[0] * P1_cf_m), 1, 1)
+        self.P1A = nn.Sequential(*tp.Prong_X(A_dim_i, A_dim_mid, mods = P1_mods, **P_inner_args))
+
+        B_dim_mid = (int(B_dim_i[0] * P1_cf_m), 1, 1)
+        self.P1B = nn.Sequential(*tp.Prong_X(B_dim_i, B_dim_mid, mods = P1_mods, **P_inner_args))
+
+        C_dim_in = (A_dim_mid[0] + B_dim_mid[0], 1, 1)
+        C_cf_pu = int(C_dim_in[0] * P2_cf_pu)
+
+        P2_args = {'dim_i': C_dim_in, 'dim_f': dim_f, 
+                   'mods':P2_mods, 
+                   'cf_i':None, 'cf_ns':cf_ns, 'cf_pu':C_cf_pu,
+                   'dropout':P2_dropout, 'activations':activations,
+                   'batchnorm':batchnorm, 'bias':bias,
+                   'out':True}
+
+        self.P2A = nn.Sequential(* tp.Prong_X(**P2_args, activation_f = activation_f))
+        self.P2B = nn.Sequential(* tp.Prong_X(**P2_args, activation_f = nn.Softplus()))
+        
+
+    def forward(self,x1, x2):
+        x1 = self.P1A(x1)
+        x2 = self.P1B(x2)
+        xcomb = torch.cat([x1, x2], dim = 1)
+        xcomb = torch.cat([self.P2A(xcomb), 
+                           torch.log(self.P2B(xcomb) + 1e-6)],
+                           dim = -1)
+        return xcomb
+    
+
+def Reset_Dual_SimpNet_2O(dual_simpnet):
+    #ds consists of a "conv" and a "dense" module. Need to go through each one, see if its a conv and reset if so. 
+
+    p1a_lays, p1b_lays, p2a_lays, p2b_lays = len(dual_simpnet.P1A), len(dual_simpnet.P1B), len(dual_simpnet.P2A), len(dual_simpnet.P2B)
+
+    for i in np.arange(p1a_lays): 
+        if isinstance(dual_simpnet.P1A[i], nn.Conv2d): 
+            dual_simpnet.P1A[i].reset_parameters()
+    
+    for i in np.arange(p1b_lays): 
+        if isinstance(dual_simpnet.P1B[i], nn.Conv2d): 
+            dual_simpnet.P1B[i].reset_parameters()
+
+    for i in np.arange(p2a_lays): 
+        if isinstance(dual_simpnet.P2A[i], nn.Conv2d): 
+            dual_simpnet.P2A[i].reset_parameters()
+
+    for i in np.arange(p2b_lays): 
+        if isinstance(dual_simpnet.P2B[i], nn.Conv2d): 
+            dual_simpnet.P2B[i].reset_parameters()
+    
+    return dual_simpnet

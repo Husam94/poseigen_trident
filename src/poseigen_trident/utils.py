@@ -862,7 +862,7 @@ def EpochUndersampler_BW(bw_train, tspl, bind_train, bin_sizes,
 
     #----------------------------------------------------------------
 
-    if EUS_mode == 'PB': 
+    elif EUS_mode == 'PB': 
         propos = se.GeomNumSpacing(EUS_prop, 1.0, patience - 1, plier = 1)
 
         propos_cur = propos[counter]
@@ -878,7 +878,7 @@ def EpochUndersampler_BW(bw_train, tspl, bind_train, bin_sizes,
 
     #----------------------------------------------------------------
 
-    if EUS_mode == 'opt': 
+    elif EUS_mode == 'opt': 
 
         opt_samp = bu.OptSample(bind_train, bin_sizes=bin_sizes, select=EUS_prop,
                                 n_samples=100, random_state=None)
@@ -886,7 +886,7 @@ def EpochUndersampler_BW(bw_train, tspl, bind_train, bin_sizes,
         new_tspl = tspl[opt_samp]
     #----------------------------------------------------------------
         
-    if EUS_mode != 'ebs': 
+    elif EUS_mode != 'ebs': 
 
         if boost_weights is None: boost_weights = 1
 
@@ -927,23 +927,34 @@ def BatchMaker_BW(x, batchsize, make_full=False):
             batches.append(idx[n_full*batchsize:])
     return batches
 
-def BatchMaker_BW_Torch(x, batchsize, make_full=False, device=device):
+def BatchMaker_BW_Torch(x, batchsize, make_full=False, fill=None, in_order=False, device=device):
     """
-    Efficiently splits a shuffled index tensor of length x into batches of size batchsize.
+    Efficiently splits an index tensor of length x into batches of size batchsize.
+
     If x is not divisible by batchsize:
-      - if make_full is True, fills the last batch with random indices.
-      - if make_full is False, the last batch will be smaller.
+      - if fill/make_full is True, fills the last batch with random indices.
+      - if fill/make_full is False, the last batch will be smaller.
+    
+    If in_order is True, indices are not shuffled and batches are returned in order.
+    
     Returns a list of torch tensors (batches of indices) on the specified device.
     """
-    idx = torch.randperm(x, device=device)
+    if fill is None:
+        fill = make_full
+
+    if in_order:
+        idx = torch.arange(x, device=device)
+    else:
+        idx = torch.randperm(x, device=device)
+
     n_full = x // batchsize
     n_rem = x % batchsize
 
     batches = [idx[i*batchsize:(i+1)*batchsize] for i in range(n_full)]
     if n_rem > 0:
-        if make_full:
-            fill = idx[torch.randint(0, x, (batchsize - n_rem,), device=device)]
-            last_batch = torch.cat((idx[n_full*batchsize:], fill))
+        if fill:
+            fill_idx = idx[torch.randint(0, x, (batchsize - n_rem,), device=device)]
+            last_batch = torch.cat((idx[n_full*batchsize:], fill_idx))
             batches.append(last_batch)
         else:
             batches.append(idx[n_full*batchsize:])
@@ -969,6 +980,7 @@ def TridentTrainer_BW(
     Split = None, flips = None, 
 
     EUS_prop = None, EUS_mode = 'recip', EUS_replace = False, boost = False,
+    OEN_train = None, OEN_eval = None,
 
     mod_init_mode = None, duds = 0, poors = None,
 
@@ -988,6 +1000,8 @@ def TridentTrainer_BW(
     No more loss_bind since we are doing weighting instead of local error based metrics. 
     
     Epoch Sampling is either by using weights or Harpoon 
+
+    OEN = One every N. Randomly chooses 1 every N values in the sorted split 
   
     '''
 
@@ -1074,21 +1088,27 @@ def TridentTrainer_BW(
     bw_base = {x: bu.BinWeights(out_bind[y], bin_sizes = bin_sizes, mode = bw_mode)
                for x, y in zip(['Train', 'Validation'], [Split[0], Split[1]])}
     
-    batchidx_base = {x: BatchMaker_BW_Torch(len(out[y]), batchsize = batchsize_infer, make_full=False)
+    batchidx_base = {x: BatchMaker_BW_Torch(len(out[y]), batchsize = batchsize_infer, 
+                                            make_full=False, in_order = True)
                      for x, y in zip(['Train', 'Validation'], [Split[0], Split[1]])}
 
 
     while counter < patience - 1 and e < maxepochs - 1: 
 
         tspl = Split[0]
+        bw_train = bw_base['Train']
+        tra_bind = out_bind[tspl]
+        tra_out = out[tspl]
 
-        if EUS_prop is not None: 
+        if OEN_train is not None: 
+            tspl = se.sample_chunks(tspl, chunk_size = OEN_train)
+            if EUS_prop is not None: 
+                tra_bind = out_bind[tspl]
+                bw_train = bu.BinWeights(tra_bind, bin_sizes = bin_sizes, mode = bw_mode)     
 
-            bw_train = bw_base['Train']
-
-            tra_out = out[tspl]
+        if EUS_prop is not None:
             
-            tspl = EpochUndersampler_BW(bw_train, tspl, out_bind[tspl], bin_sizes,
+            tspl = EpochUndersampler_BW(bw_train, tspl, tra_bind, bin_sizes,
                                         EUS_prop, EUS_mode, boost_weights = boost_weights, 
                                         counter = counter, patience = patience, 
                                         replace = EUS_replace, tra_out = tra_out)
@@ -1109,7 +1129,7 @@ def TridentTrainer_BW(
             if tra_std is not None: tra_std = torch.vstack([tra_std, tra_std])
             tra_inp = [torch.vstack([x, torch.flip(x, dims = F)]) for x, F in zip(tra_inp, flips)]
         
-        tidx = BatchMaker_BW_Torch(len(tra_out), batchsize = batchsize, make_full=True)
+        tidx = BatchMaker_BW_Torch(len(tra_out), batchsize = batchsize, make_full=True, in_order = False)
 
         used = []
 
@@ -1133,7 +1153,7 @@ def TridentTrainer_BW(
             loss.backward()
             optimizer.step()
             
-            if ib == 0 and pred_b.shape != tra_out_b.shape: 
+            if ib == 0 and pred_b.shape != tra_out_b.shape and e == 0: 
                 print(f'WARNING: SHAPES DONT MATCH! Actual {tra_out_b.shape}, Pred {pred_b.shape}')
 
             #-------------------------------------------
@@ -1164,14 +1184,23 @@ def TridentTrainer_BW(
             
             for iu, u in enumerate(q[a:]): 
 
-                ev_spl = torch.as_tensor(u[1], device=device)
+                ev_spl = u[1]
+                ev_wei = bw_base[u[0]]
+                ev_idx = batchidx_base[u[0]]
+                if OEN_eval is not None: 
+                    ev_spl = se.sample_chunks(ev_spl, chunk_size = OEN_eval)
+                    ev_bind = out_bind[ev_spl]
+                    ev_wei = bu.BinWeights(ev_bind, bin_sizes = bin_sizes, mode = bw_mode)
+                    ev_idx = BatchMaker_BW_Torch(len(ev_spl), batchsize = batchsize_infer, 
+                                                 make_full=False, in_order = True)
+
+                ev_spl = torch.as_tensor(ev_spl, device=device)
+                ev_wei = torch.from_numpy(ev_wei).to(device,  dtype = dtypo)
+
                 ev_out = out[ev_spl]
                 ev_std = out_std[ev_spl] if out_std is not None else None
                 ev_inp = [x[ev_spl] for x in inps]
                 
-                ev_wei = torch.from_numpy(bw_base[u[0]]).to(device,  dtype = dtypo)
-
-                ev_idx = batchidx_base[u[0]]
 
                 metbatches = []
 
