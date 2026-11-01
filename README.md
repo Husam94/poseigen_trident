@@ -3,6 +3,8 @@
 Trident is the neural network design and training package in the Poseigen family.
 It provides super-module generators, pre-assembled architectures, and a full training toolkit for biological sequences and beyond.
 
+Part of the [Poseigen ecosystem](https://github.com/Husam94/poseigen).
+
 ## Features
 
 Trident is organized into five modules:
