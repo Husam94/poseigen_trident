@@ -734,6 +734,8 @@ def TridentTrainer(
                                 zfalip, sepflips, indivflips, 
                                 WBG, harp, tweights, ztbatchs)
 
+        model.train()
+
         for ib, b, in enumerate(tidx):
 
             inps_b, out_b, out_std_b, out_weights_b, out_bind_b = BatchData(b, inps, 
